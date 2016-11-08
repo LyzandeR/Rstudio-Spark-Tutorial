@@ -1,0 +1,152 @@
+---
+title: "Spark and R"
+author: "Theo Boutaris"
+date: "8 November 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Spark
+
+Apache Spark is a fast and general engine for large-scale data processing as mentioned on the 
+official [project's page](http://spark.apache.org/). For many it is considered to be the successor
+of the popular hadoop engine.
+
+Spark has considerably increased in popularity in the last years since:
+
+* It is easy to implement with existing technologies. It can run on:
+    * Hadoop
+    * Mesos
+    * Standalone
+    * In the cloud
+  And it can also access diverse data sources including:
+    * HDFS
+    * Cassandra
+    * HBase 
+    * S3
+* It runs programs up to 100x faster than Hadoop MapReduce in RAM or 10x faster on disk.
+* It is implemented in a plethora of languages like:
+    * Java
+    * Scala
+    * Python
+    * R
+
+## R
+
+R is a statistical programming language (could also be considered a general purpose language
+after latest developments) and it is one of the languages used to run Spark for statistical / data
+analysis.
+
+In this course we will explore the two main R packages used to run data analysis on Spark:
+
+* SparkR - natively included in Spark after version 1.6.2
+* sparklyr - developed by RStudio
+
+## Installation of Spark and Hadoop and versions
+
+#### Versions and Spark Mode
+
+I spent a considerable amount of time, trying to find out exactly which combination of Hadoop and 
+spark would work with both SparkR and sparklyr (these are very new packages and there are still
+some issues, especially with the recent update of Spark to version 2.0.1). According to my research
+Spark version 2.0.1 (the most recent at the time of writing) and Hadoop version 2.4 seem to work
+perfect with both SparkR and sparklyr. For the rest of the course 
+
+I used the [standalone mode of Spark](http://spark.apache.org/docs/latest/spark-standalone.html) and
+I am also working on Windows 10.
+
+```{R}
+sessionInfo()
+```
+
+#### Installation of Spark and Hadoop
+
+The easiest way to install Spark Standalone and Hadoop is through `sparklyr::spark_install`:
+
+```{R, eval = TRUE}
+#install Spark 2.0.1 and Hadoop 2.4
+#sparklyr version 0.4.22 
+library(sparklyr)
+spark_install(version = '2.0.1', hadoop_version = '2.4')
+```
+
+After the download and installation of Spark and Hadoop (this might take a while) we are ready to 
+start using `SparkR` and `sparklyr`.
+
+For clarity your spark and hadoop versions by default will be installed in:
+
+`C:\Users\<your user>\AppData\Local\rstudio\spark\Cache\spark-2.0.1-bin-hadoop2.4`
+
+## RStudio
+
+`SparR` is native to Spark since version 1.6.2 and can be immediately used through the command line.
+`sparklyr` can be used after loading the package `sparklyr`. However, most users (including myself)
+like working on an IDE (this is why we have IDEs, right?) like RStudio. In fact the [RStudio preview Release](https://www.rstudio.com/products/rstudio/download/preview/) includes a toolset for 
+creating / managing spark connections and browsing Spark DataFrames and has specifically been 
+designed to work with Spark.
+
+For the rest of the course we will be using the RStudio preview release which can be downloaded for
+free in the link above.
+
+#### Installation of sparklyr and SparkR
+
+`sparklyr` is readily available on CRAN so running `install.packages('sparklyr')` would be enough.
+Things are slightly more complicated for `SparkR` since it has to be downloaded and installed from 
+github. Nothing too difficult though:
+
+```{R, eval = FALSE}
+#you will need the devtools package to install packages from github
+#so install.packages('devtools') if you don't have it
+library(devtools)
+install_github('apache/spark@v2.0.1', subdir='R/pkg')
+```
+
+<div style='background-color:lightgray;border-radius: 5px;border: 2px solid #73AD21;'>
+Remember that working through the
+command line SparkR can be done simply by visiting 
+`C:\Users\<your user>\AppData\Local\rstudio\spark\Cache\spark-2.0.1-bin-hadoop2.4\bin\` and 
+double clicking sparkR.exe or simple by running sparkR on windows cmd if the above path is 
+part of the environment variable `%path%`.
+</div>
+
+And that would be enough to have both sparklyr and SparkR.
+
+```{R}
+#let's load them
+#lots of base R functions will be masked so please use SparkR only for working with Spark
+#sparklyr version 0.4.22 
+library(sparklyr)
+#SparkR version 2.0.1
+library(SparkR, warn.conflicts = FALSE)
+```
+
+## SparkR
+
+Our first task would be to connect RStudio to spark using SparkR.
+
+To do this we need first need to set the `SPARK_HOME` environment variable (don't worry we will 
+do it through R and it will be super easy) and then connet to spark through `spark.session`:
+
+```{R}
+#remember to use your own username instead of teoboot which is mine
+#this sets the SPARK_HOME environment variable
+Sys.setenv(SPARK_HOME = "C:/Users/teoboot/AppData/Local/rstudio/spark/Cache/spark-2.0.1-bin-hadoop2.4")
+
+#start a spark R session in SparkR.
+#by not setting the SPARK_HOME environment variable sparkR.session will attempt to download it
+sc1 <- sparkR.session()
+
+#make a df
+df <- createDataFrame(iris)
+head(df)
+```
+
+
+
+
+
+
+
