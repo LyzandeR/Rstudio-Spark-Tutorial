@@ -114,15 +114,6 @@ part of the environment variable `%path%`.
 
 And that would be enough to have both sparklyr and SparkR.
 
-```{R}
-#let's load them
-#lots of base R functions will be masked so please use SparkR only for working with Spark
-#sparklyr version 0.4.22 
-library(sparklyr)
-#SparkR version 2.0.1
-library(SparkR, warn.conflicts = FALSE)
-```
-
 ## SparkR
 
 Our first task would be to connect RStudio to spark using SparkR.
@@ -131,19 +122,136 @@ To do this we need first need to set the `SPARK_HOME` environment variable (don'
 do it through R and it will be super easy) and then connet to spark through `spark.session`:
 
 ```{R}
+#lots of base R functions will be masked so please use SparkR only for working with Spark
 #remember to use your own username instead of teoboot which is mine
 #this sets the SPARK_HOME environment variable
 Sys.setenv(SPARK_HOME = "C:/Users/teoboot/AppData/Local/rstudio/spark/Cache/spark-2.0.1-bin-hadoop2.4")
 
+#SparkR version 2.0.1
+library(SparkR, warn.conflicts = FALSE)
+
 #start a spark R session in SparkR.
 #by not setting the SPARK_HOME environment variable sparkR.session will attempt to download it
 sc1 <- sparkR.session()
-
-#make a df
-df <- createDataFrame(iris)
-head(df)
 ```
 
+For the following analysis we will be using the popular `flights` from the `nycflights13` 
+package.
+
+Firstly, typical data frame operations in local R would involve subseting columns, rows, grouping
+and aggregating. Let's see how we can do this in SparkR:
+
+```{R}
+#load the package in order to use flights
+library(nycflights13)
+
+#create a dataframe
+df <- createDataFrame(flights)
+
+#in order to subset columns from flights we use select
+head(select(df, df$air_time, df$distance)) 
+
+#another way would be to use the [ operator as we would in a local dataframe
+head(df[, c('air_time', 'distance')])
+
+#in order to subset rows we use filter
+head(filter(df, df$distance > 3000))
+
+#another way would be to use the [ operator as we would in a local dataframe
+#note that subseting the rows of a data.frame with indices would not work
+#i.e. df[1:100], ] would not work.
+head(df[df$distance > 3000, ])
+
+#in order to group and aggregate we use summarize and groupBY
+grouped_df <- groupBy(df, df$origin)
+df2 <- summarize(grouped_df, 
+                 mean = mean(df$distance), 
+                 count = n(df$origin),
+                 sum = sum(df$distance))
+head(df2)
+
+#in order to sort the data frame we use arrange:
+#head(arrange(df2, desc(df2$mean))) for sorting in descending order or
+head(arrange(df2, df2$mean)) 
+
+```
+
+However, the above processes can be easily combined with the pipe operater `%>% from the 
+`magrittr` package. In this way we can work in a similar way to `dplyr`, `ggvis`, `tableHTML` or
+other. The above process would be written like this:
+
+```{R}
+library(magrittr)
+df3 <- df %>%
+        group_by(df$origin)%>%
+        summarize(mean = mean(df$distance), 
+                         count = n(df$origin),
+                         sum = sum(df$distance)) 
+
+arrange(df3, df3$mean) %>% 
+ head
+```
+
+And as you can see we get the same results.
+
+SparkR also supports the use of SQL commands by registering a table as a sql table
+
+```{R}
+#create a sql table
+createOrReplaceTempView(df, "sql_df")
+
+#query sql table using sql syntax
+df4 <- sql("SELECT * FROM sql_df WHERE distance > 4800")
+head(df4)
+```
+
+There will be cases where we would want to collect our data sets from spark and work on them 
+locally. This can be done using `collect`.
+
+```{R}
+#local_df will be a data frame on our local R instance
+local_df <- collect(df3)
+local_df[1:10, ]
+```
+
+## Machine Learning
+
+It is essential for our work to be able to do machine learning on a data set. SparkR offers this
+capability through MLlib.
+
+By continuing to use the `flights` data set we will predict distance.
+
+First of all we need to split our data set into a train and a test set with the `randomSplit` 
+function. 
+
+```{R}
+#split into train and test
+df_list <- randomSplit(df, c(20, 80))
+
+#test
+test <- df_list[[1]]
+nrow(test)
+
+#train
+train <- df_list[[2]]
+nrow(train)
+
+#validation
+nrow(df)
+```
+
+Now that we have our train and test sets we are ready to run our glm model. We will train our model
+on the train set and then predict on our test set. We will try to predict distance based on some of 
+the variables we have.
+
+```{R}
+#run model
+train <- na.omit(train)
+my_mod <- glm(distance ~ air_time, data = train, family = 'gaussian')
+
+#summary
+summary(my_mod)
+```
 
 
 
