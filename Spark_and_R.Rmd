@@ -185,8 +185,8 @@ library(magrittr)
 df3 <- df %>%
         group_by(df$origin)%>%
         summarize(mean = mean(df$distance), 
-                         count = n(df$origin),
-                         sum = sum(df$distance)) 
+                  count = n(df$origin),
+                  sum = sum(df$distance)) 
 
 arrange(df3, df3$mean) %>% 
  head
@@ -211,10 +211,10 @@ locally. This can be done using `collect`.
 ```{R}
 #local_df will be a data frame on our local R instance
 local_df <- collect(df3)
-local_df[1:10, ]
+local_df[1:2, ]
 ```
 
-## Machine Learning
+#### Machine Learning - SparkR
 
 It is essential for our work to be able to do machine learning on a data set. SparkR offers this
 capability through MLlib.
@@ -251,9 +251,228 @@ my_mod <- glm(distance ~ air_time, data = train, family = 'gaussian')
 
 #summary
 summary(my_mod)
+
+#predict
+#omit the NAs manually here otherwise spark will crash without
+#an informative error
+test <- na.omit(test)
+preds <- predict(my_mod, newData = test)
+
+#predictions and actual distance
+head(select(preds, 'distance', 'prediction'))
+
+#add squared residuals using transform
+sq_resid <- transform(preds, sq_residuals = (preds$distance - preds$prediction)^2)
+
+#calculate MSE
+MSE <- collect(summarize(sq_resid, mean = mean(sq_resid$sq_residuals)))$mean
+
+#RMSE
+sqrt(MSE$mean) 
 ```
 
+Notice that `glm` cannot handle NAs that might exist within the DataFrame which will make the 
+function crash with an uninformative error. Make sure you remove NAs beforehand with `na.omit`. 
+Also, `glm` does not provide any metrics to assess the goodness of fit. These need to be created by
+the user as I did above with the calculation of the MSE. Lastly, `SparkR` seems to offer just four
+machine learning algorithms at the time of writting:
 
+* Generalised Linear Models 
+* kmeans
+* Naive Bayes
+* Survival Regression Model
+
+## Sparklyr
+
+```{R}
+library(sparklyr)
+sc2 <- spark_connect('local', version = '2.0.1', hadoop_version = '2.4', config = list())
+```
+
+Now we will try to do the same process using the sparklyr package. 
+
+In sparklyr copy_to will transfer the flights data set to our clusters in the same way that 
+`createDataFrame` did in SparkR.
+
+```{R}
+#load nycflights13 for flights data set
+library(nycflights13)
+
+#pass to spark
+df <- copy_to(sc2, flights)
+```
+
+`sparklyr` uses `dplyr` for all data manipulation processes using the usual `dplyr` verbs.
+
+```{R}
+#in order to select specific columns we use sparklyr::select
+#in the same way we would in dplyr
+head(select(df, distance, origin))
+```
+
+Notice that unlike SparkR, `df[, 'origin']` would not work on `sparklyr`.
+
+```{R}
+#in a similar way filter is used to subset rows from df
+head(filter(df, arr_delay > 30))
+```
+
+Notice again that unlike SparkR, `df[distance > 3000, ]` would not work on `sparklyr`.
+
+Also, for the above examples notice that for sparklyr (as with dplyr) only the column name is 
+required (unquoted) for subsetting df, whereas for SparkR we use `df$column_name`. To see the 
+difference clearly, I add the two below:
+
+```{R, eval = FALSE}
+SparkR::filter(df, df$distance > 3000)
+sparklyr::filter(df, distance > 3000)
+```
+
+Grouping and aggregation in `sparklyr` is done in the exact same way as R users would do it in 
+`dplyr` locally. `dplyr` promotes (and includes) the use of the pipe operator from `magrittr` 
+(`%>%`). Therefore, even though we can perform a step by step group and aggregation process 
+(remember we started like this with SparkR before we started using the pipe operator as well) we 
+will use directly the chaining method (i.e. using pipe) which is what `dplyr` users are familiar 
+with anyway.
+
+```{R}
+#group and summurise
+df_aggr <- 
+  df %>%
+   group_by(origin) %>%
+   summarise(mean = mean(distance),
+             count = n(),
+             sum = sum(distance))
+head(df_aggr)
+```
+
+You can see that in terms of selecting columns, subsetting rows, grouping and aggregating SparkR 
+and sparklyr have many similarities. Notice again that for sparklyr we only specify column names 
+instead of the full df$column_name syntax. Also, function `n` does not take any arguments. The
+results are consistent between the two processes.
+
+In a similar way, in order to sort df we will still use `dplyr::arrange`:
+
+```{R}
+arrange(df_aggr, desc(mean)) %>% 
+  head
+```
+
+`sparklyr` also supports sql in the same way as SparkR using the function `dbGetQuery`. `dbGetQuery`
+comes from the DBI packge.
+
+```{R}
+library(DBI)
+df_sql <- dbGetQuery(sc, "SELECT * FROM flights WHERE distance > 4800 LIMIT 5")
+df_sql
+```
+
+Notice that `dbGetQuery` is used on the name of the object `copy_to` was applied on i.e. flights 
+and not df. On RStudio under the Environment tab you should be able to see the flights data set.
+The data sources you see there are the ones you can actually access with sql.
+
+Again in the same way as SparkR, `dplyr::collect` will bring a df back from spark to a local 
+dataframe.
+
+```{R}
+local_df <- collect(df_aggr)
+local_df[1:2, ]
+```
+
+## Machine Learning - sparklyr
+
+It is `sparklyr`'s turn to see how we can use its functions to do machine learning. We didn't see
+many differences between the two packages in terms of data manipulation but we will see considerable
+differences in machine learning.
+
+Let's start again by splitting our data set to a train and a test set in the same way that we did
+with SparkR. To do this we use `sdf_partition`:
+
+```{R}
+partitions <- sdf_partition(df, training = 0.8, test = 0.2, seed = 1099)
+count(df)
+
+train <- partitions$training
+count(train)
+
+test <- partitions$test
+count(test)
+```
+
+`dplyr` does not have an `nrow` function but we can easily use `count` to make sure that our data set
+was split properly.
+
+Unlike `SparkR`, `sparklyr` offers a plethora of models or machine learning techniques to choose 
+from including:
+
+* ml_als_factorization                   
+* ml_binary_classification_eval         
+* ml_classification_eval                 
+* ml_create_dummy_variables             
+* ml_decision_tree                       
+* ml_generalized_linear_regression      
+* ml_gradient_boosted_trees              
+* ml_kmeans                             
+* ml_lda                                 
+* ml_linear_regression                  
+* ml_load                                
+* ml_logistic_regression                
+* ml_model                               
+* ml_multilayer_perceptron              
+* ml_naive_bayes                         
+* ml_one_vs_rest                        
+* ml_options                             
+* ml_pca                                
+* ml_prepare_dataframe                   
+* ml_prepare_features                   
+* ml_prepare_response_features_intercept 
+* ml_random_forest                      
+* ml_save                                
+* ml_survival_regression                
+* ml_tree_feature_importance            
+
+Now that we have our training and test sets we are ready to run our regression model. 
+
+```{R}
+fit <- ml_linear_regression(train, response = "distance", features = "air_time")
+fit
+
+#summary 
+summary(fit)
+```
+
+`ml_linear_regression` seems to be a better alternative to `SparkR::glm` since it can handle NAs 
+without having to run `na.omit` before training the model (SparkR does not return a meaningful
+error either in case you forget to remove NAs). It also provides an R squared and RMSE by default
+which we had to calculate on our own in the case of `SparkR::glm`.
+
+```{R}
+#predict on test set
+preds <- predict(fit, data = test)
+```
+
+Of course, although `ml_linear_regression` provides an R squared and an RMSE we need to check those
+on the test set in order to assess the goodness of fit. We will do this in a similar way as we did
+in SparkR.
+
+We will use `na.omit` in this case because we know some distances have missing values and we want to 
+make sure predictions are correct. Also, make sure to use `sdf_predict` instead of `predict` because
+the latter will also collect. `mutate` instead of `transform` is used in `sparklyr` to add a column.
+
+```{R}
+#add squared residuals using transform
+test <- na.omit(test)
+
+preds <- sdf_predict(fit, data = test)
+
+sq_resid <- mutate(preds, sq_residuals = (distance - prediction)^2)
+
+#calculate MSE
+MSE <- collect(summarise(sq_resid, mean = mean(sq_residuals)))$mean
+
+#RMSE
+sqrt(MSE) 
+```
 
 
 
