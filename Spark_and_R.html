@@ -231,7 +231,7 @@ library(SparkR, warn.conflicts = FALSE)
 #by not setting the SPARK_HOME environment variable sparkR.session will attempt to download it
 sc1 &lt;- sparkR.session()</code></pre>
 <pre><code>## Spark package found in SPARK_HOME: C:/Users/teoboot/AppData/Local/rstudio/spark/Cache/spark-2.0.1-bin-hadoop2.4</code></pre>
-<pre><code>## Launching java with spark-submit command C:/Users/teoboot/AppData/Local/rstudio/spark/Cache/spark-2.0.1-bin-hadoop2.4/bin/spark-submit2.cmd   sparkr-shell C:\Users\teoboot\AppData\Local\Temp\Rtmpq0LnrN\backend_port15045ff875da</code></pre>
+<pre><code>## Launching java with spark-submit command C:/Users/teoboot/AppData/Local/rstudio/spark/Cache/spark-2.0.1-bin-hadoop2.4/bin/spark-submit2.cmd   sparkr-shell C:\Users\teoboot\AppData\Local\Temp\Rtmp2J76Yw\backend_port136c1f8b551b</code></pre>
 <p>For the following analysis we will be using the popular <code>flights</code> from the <code>nycflights13</code> package.</p>
 <p>Firstly, typical data frame operations in local R would involve subseting columns, rows, grouping and aggregating. Let’s see how we can do this in SparkR:</p>
 <pre class="r"><code>#load the package in order to use flights
@@ -329,8 +329,8 @@ head(arrange(df2, df2$mean)) </code></pre>
 df3 &lt;- df %&gt;%
         group_by(df$origin)%&gt;%
         summarize(mean = mean(df$distance), 
-                         count = n(df$origin),
-                         sum = sum(df$distance)) 
+                  count = n(df$origin),
+                  sum = sum(df$distance)) 
 
 arrange(df3, df3$mean) %&gt;% 
  head</code></pre>
@@ -370,21 +370,12 @@ head(df4)</code></pre>
 <p>There will be cases where we would want to collect our data sets from spark and work on them locally. This can be done using <code>collect</code>.</p>
 <pre class="r"><code>#local_df will be a data frame on our local R instance
 local_df &lt;- collect(df3)
-local_df[1:10, ]</code></pre>
-<pre><code>##      origin      mean  count       sum
-## 1       LGA  779.8357 104662  81619161
-## 2       EWR 1056.7428 120835 127691515
-## 3       JFK 1266.2491 111279 140906931
-## NA     &lt;NA&gt;        NA     NA        NA
-## NA.1   &lt;NA&gt;        NA     NA        NA
-## NA.2   &lt;NA&gt;        NA     NA        NA
-## NA.3   &lt;NA&gt;        NA     NA        NA
-## NA.4   &lt;NA&gt;        NA     NA        NA
-## NA.5   &lt;NA&gt;        NA     NA        NA
-## NA.6   &lt;NA&gt;        NA     NA        NA</code></pre>
-</div>
-<div id="machine-learning" class="section level2">
-<h2>Machine Learning</h2>
+local_df[1:2, ]</code></pre>
+<pre><code>##   origin      mean  count       sum
+## 1    LGA  779.8357 104662  81619161
+## 2    EWR 1056.7428 120835 127691515</code></pre>
+<div id="machine-learning---sparkr" class="section level4">
+<h4>Machine Learning - SparkR</h4>
 <p>It is essential for our work to be able to do machine learning on a data set. SparkR offers this capability through MLlib.</p>
 <p>By continuing to use the <code>flights</code> data set we will predict distance.</p>
 <p>First of all we need to split our data set into a train and a test set with the <code>randomSplit</code> function.</p>
@@ -394,11 +385,11 @@ df_list &lt;- randomSplit(df, c(20, 80))
 #test
 test &lt;- df_list[[1]]
 nrow(test)</code></pre>
-<pre><code>## [1] 67572</code></pre>
+<pre><code>## [1] 67658</code></pre>
 <pre class="r"><code>#train
 train &lt;- df_list[[2]]
 nrow(train)</code></pre>
-<pre><code>## [1] 269204</code></pre>
+<pre><code>## [1] 269118</code></pre>
 <pre class="r"><code>#validation
 nrow(df)</code></pre>
 <pre><code>## [1] 336776</code></pre>
@@ -413,20 +404,304 @@ summary(my_mod)</code></pre>
 ## Deviance Residuals: 
 ## (Note: These are approximate quantiles with relative error &lt;= 0.01)
 ##      Min        1Q    Median        3Q       Max  
-## -1101.36    -51.20      3.48     53.63    713.82  
+## -1102.77    -51.46      4.85     54.55    698.38  
 ## 
 ## Coefficients:
 ##              Estimate  Std. Error  t value  Pr(&gt;|t|)
-## (Intercept)  -124.49   0.37152     -335.07  0       
-## air_time     7.7823    0.002094    3716.5   0       
+## (Intercept)  -124.35   0.37239     -333.92  0       
+## air_time     7.7819    0.0021004   3704.9   0       
 ## 
-## (Dispersion parameter for gaussian family taken to be 10066.38)
+## (Dispersion parameter for gaussian family taken to be 10105.42)
 ## 
-##     Null deviance: 1.4167e+11  on 261677  degrees of freedom
-## Residual deviance: 2.6341e+09  on 261676  degrees of freedom
-## AIC: 3154489
+##     Null deviance: 1.4135e+11  on 261586  degrees of freedom
+## Residual deviance: 2.6434e+09  on 261585  degrees of freedom
+## AIC: 3154404
 ## 
 ## Number of Fisher Scoring iterations: 1</code></pre>
+<pre class="r"><code>#predict
+#omit the NAs manually here otherwise spark will crash without
+#an informative error
+test &lt;- na.omit(test)
+preds &lt;- predict(my_mod, newData = test)
+
+#predictions and actual distance
+head(select(preds, 'distance', 'prediction'))</code></pre>
+<pre><code>##   distance prediction
+## 1     1576  1299.7343
+## 2      762   778.3495
+## 3      733   949.5505
+## 4     1005  1105.1878
+## 5     1389  1875.5922
+## 6      762   918.4231</code></pre>
+<pre class="r"><code>#add squared residuals using transform
+sq_resid &lt;- transform(preds, sq_residuals = (preds$distance - preds$prediction)^2)
+
+#calculate MSE
+MSE &lt;- collect(summarize(sq_resid, mean = mean(sq_resid$sq_residuals)))$mean
+
+#RMSE
+sqrt(MSE) </code></pre>
+<pre><code>## [1] 99.90119</code></pre>
+<p>Notice that <code>glm</code> cannot handle NAs that might exist within the DataFrame which will make the function crash with an uninformative error. Make sure you remove NAs beforehand with <code>na.omit</code>. Also, <code>glm</code> does not provide any metrics to assess the goodness of fit. These need to be created by the user as I did above with the calculation of the MSE. Lastly, <code>SparkR</code> seems to offer just four machine learning algorithms at the time of writting:</p>
+<ul>
+<li>Generalised Linear Models</li>
+<li>kmeans</li>
+<li>Naive Bayes</li>
+<li>Survival Regression Model</li>
+</ul>
+</div>
+</div>
+<div id="sparklyr" class="section level2">
+<h2>Sparklyr</h2>
+<pre class="r"><code>library(sparklyr)
+library(dplyr)</code></pre>
+<pre><code>## Warning: package 'dplyr' was built under R version 3.3.1</code></pre>
+<pre><code>## 
+## Attaching package: 'dplyr'</code></pre>
+<pre><code>## The following objects are masked from 'package:SparkR':
+## 
+##     arrange, between, collect, contains, count, cume_dist,
+##     dense_rank, desc, distinct, explain, filter, first, group_by,
+##     intersect, lag, last, lead, mutate, n, n_distinct, ntile,
+##     percent_rank, rename, row_number, sample_frac, select, sql,
+##     summarize, union</code></pre>
+<pre><code>## The following objects are masked from 'package:stats':
+## 
+##     filter, lag</code></pre>
+<pre><code>## The following objects are masked from 'package:base':
+## 
+##     intersect, setdiff, setequal, union</code></pre>
+<pre class="r"><code>sc2 &lt;- spark_connect('local', version = '2.0.1', hadoop_version = '2.4', config = list())</code></pre>
+<p>Now we will try to do the same process using the sparklyr package.</p>
+<p>In sparklyr copy_to will transfer the flights data set to our clusters in the same way that <code>createDataFrame</code> did in SparkR.</p>
+<pre class="r"><code>#load nycflights13 for flights data set
+library(nycflights13)
+
+#pass to spark
+df &lt;- copy_to(sc2, flights)</code></pre>
+<p><code>sparklyr</code> uses <code>dplyr</code> for all data manipulation processes using the usual <code>dplyr</code> verbs.</p>
+<pre class="r"><code>#in order to select specific columns we use sparklyr::select
+#in the same way we would in dplyr
+head(select(df, distance, origin))</code></pre>
+<pre><code>## Source:   query [?? x 2]
+## Database: spark connection master=local app=sparklyr local=TRUE
+## 
+##   distance origin
+##      &lt;dbl&gt;  &lt;chr&gt;
+## 1     1400    EWR
+## 2     1416    LGA
+## 3     1089    JFK
+## 4     1576    JFK
+## 5      762    LGA
+## 6      719    EWR</code></pre>
+<p>Notice that unlike SparkR, <code>df[, 'origin']</code> would not work on <code>sparklyr</code>.</p>
+<pre class="r"><code>#in a similar way filter is used to subset rows from df
+head(filter(df, arr_delay &gt; 30))</code></pre>
+<pre><code>## Source:   query [?? x 19]
+## Database: spark connection master=local app=sparklyr local=TRUE
+## 
+##    year month   day dep_time sched_dep_time dep_delay arr_time
+##   &lt;int&gt; &lt;int&gt; &lt;int&gt;    &lt;int&gt;          &lt;int&gt;     &lt;dbl&gt;    &lt;int&gt;
+## 1  2013     1     1      542            540         2      923
+## 2  2013     1     1      559            600        -1      941
+## 3  2013     1     1      608            600         8      807
+## 4  2013     1     1      635            635         0     1028
+## 5  2013     1     1      702            700         2     1058
+## 6  2013     1     1      724            730        -6     1111
+## # ... with 12 more variables: sched_arr_time &lt;int&gt;, arr_delay &lt;dbl&gt;,
+## #   carrier &lt;chr&gt;, flight &lt;int&gt;, tailnum &lt;chr&gt;, origin &lt;chr&gt;, dest &lt;chr&gt;,
+## #   air_time &lt;dbl&gt;, distance &lt;dbl&gt;, hour &lt;dbl&gt;, minute &lt;dbl&gt;,
+## #   time_hour &lt;dbl&gt;</code></pre>
+<p>Notice again that unlike SparkR, <code>df[distance &gt; 3000, ]</code> would not work on <code>sparklyr</code>.</p>
+<p>Also, for the above examples notice that for sparklyr (as with dplyr) only the column name is required (unquoted) for subsetting df, whereas for SparkR we use <code>df$column_name</code>. To see the difference clearly, I add the two below:</p>
+<pre class="r"><code>SparkR::filter(df, df$distance &gt; 3000)
+sparklyr::filter(df, distance &gt; 3000)</code></pre>
+<p>Grouping and aggregation in <code>sparklyr</code> is done in the exact same way as R users would do it in <code>dplyr</code> locally. <code>dplyr</code> promotes (and includes) the use of the pipe operator from <code>magrittr</code> (<code>%&gt;%</code>). Therefore, even though we can perform a step by step group and aggregation process (remember we started like this with SparkR before we started using the pipe operator as well) we will use directly the chaining method (i.e. using pipe) which is what <code>dplyr</code> users are familiar with anyway.</p>
+<pre class="r"><code>#group and summurise
+df_aggr &lt;- 
+  df %&gt;%
+   group_by(origin) %&gt;%
+   summarise(mean = mean(distance),
+             count = n(),
+             sum = sum(distance))
+head(df_aggr)</code></pre>
+<pre><code>## Source:   query [?? x 4]
+## Database: spark connection master=local app=sparklyr local=TRUE
+## 
+##   origin      mean  count       sum
+##    &lt;chr&gt;     &lt;dbl&gt;  &lt;dbl&gt;     &lt;dbl&gt;
+## 1    LGA  779.8357 104662  81619161
+## 2    EWR 1056.7428 120835 127691515
+## 3    JFK 1266.2491 111279 140906931</code></pre>
+<p>You can see that in terms of selecting columns, subsetting rows, grouping and aggregating SparkR and sparklyr have many similarities. Notice again that for sparklyr we only specify column names instead of the full df$column_name syntax. Also, function <code>n</code> does not take any arguments. The results are consistent between the two processes.</p>
+<p>In a similar way, in order to sort df we will still use <code>dplyr::arrange</code>:</p>
+<pre class="r"><code>arrange(df_aggr, desc(mean)) %&gt;% 
+  head</code></pre>
+<pre><code>## Source:   query [?? x 4]
+## Database: spark connection master=local app=sparklyr local=TRUE
+## 
+##   origin      mean  count       sum
+##    &lt;chr&gt;     &lt;dbl&gt;  &lt;dbl&gt;     &lt;dbl&gt;
+## 1    JFK 1266.2491 111279 140906931
+## 2    EWR 1056.7428 120835 127691515
+## 3    LGA  779.8357 104662  81619161</code></pre>
+<p><code>sparklyr</code> also supports sql in the same way as SparkR using the function <code>dbGetQuery</code>. <code>dbGetQuery</code> comes from the DBI packge.</p>
+<pre class="r"><code>library(DBI)</code></pre>
+<pre><code>## Warning: package 'DBI' was built under R version 3.3.2</code></pre>
+<pre class="r"><code>df_sql &lt;- dbGetQuery(sc2, &quot;SELECT * FROM flights WHERE distance &gt; 4800 LIMIT 5&quot;)
+df_sql</code></pre>
+<pre><code>##   year month day dep_time sched_dep_time dep_delay arr_time sched_arr_time
+## 1 2013     1   1      857            900        -3     1516           1530
+## 2 2013     1   1     1344           1344         0     2005           1944
+## 3 2013     1   2      909            900         9     1525           1530
+## 4 2013     1   2     1344           1344         0     1940           1944
+## 5 2013     1   3      914            900        14     1504           1530
+##   arr_delay carrier flight tailnum origin dest air_time distance hour
+## 1       -14      HA     51  N380HA    JFK  HNL      659     4983    9
+## 2        21      UA     15  N76065    EWR  HNL      656     4963   13
+## 3        -5      HA     51  N380HA    JFK  HNL      638     4983    9
+## 4        -4      UA     15  N77066    EWR  HNL      634     4963   13
+## 5       -26      HA     51  N380HA    JFK  HNL      616     4983    9
+##   minute time_hour
+## 1      0      2013
+## 2     44      2013
+## 3      0      2013
+## 4     44      2013
+## 5      0      2013</code></pre>
+<p>Notice that <code>dbGetQuery</code> is used on the name of the object <code>copy_to</code> was applied on i.e. flights and not df. On RStudio under the Environment tab you should be able to see the flights data set. The data sources you see there are the ones you can actually access with sql.</p>
+<p>Again in the same way as SparkR, <code>dplyr::collect</code> will bring a df back from spark to a local dataframe.</p>
+<pre class="r"><code>local_df &lt;- collect(df_aggr)
+local_df[1:2, ]</code></pre>
+<pre><code>## # A tibble: 2 x 4
+##   origin      mean  count       sum
+##    &lt;chr&gt;     &lt;dbl&gt;  &lt;dbl&gt;     &lt;dbl&gt;
+## 1    LGA  779.8357 104662  81619161
+## 2    EWR 1056.7428 120835 127691515</code></pre>
+</div>
+<div id="machine-learning---sparklyr" class="section level2">
+<h2>Machine Learning - sparklyr</h2>
+<p>It is <code>sparklyr</code>’s turn to see how we can use its functions to do machine learning. We didn’t see many differences between the two packages in terms of data manipulation but we will see considerable differences in machine learning.</p>
+<p>Let’s start again by splitting our data set to a train and a test set in the same way that we did with SparkR. To do this we use <code>sdf_partition</code>:</p>
+<pre class="r"><code>partitions &lt;- sdf_partition(df, training = 0.8, test = 0.2, seed = 1099)
+count(df)</code></pre>
+<pre><code>## Source:   query [?? x 1]
+## Database: spark connection master=local app=sparklyr local=TRUE
+## 
+##        n
+##    &lt;dbl&gt;
+## 1 336776</code></pre>
+<pre class="r"><code>train &lt;- partitions$training
+count(train)</code></pre>
+<pre><code>## Source:   query [?? x 1]
+## Database: spark connection master=local app=sparklyr local=TRUE
+## 
+##        n
+##    &lt;dbl&gt;
+## 1 269145</code></pre>
+<pre class="r"><code>test &lt;- partitions$test
+count(test)</code></pre>
+<pre><code>## Source:   query [?? x 1]
+## Database: spark connection master=local app=sparklyr local=TRUE
+## 
+##       n
+##   &lt;dbl&gt;
+## 1 67631</code></pre>
+<p><code>dplyr</code> does not have an <code>nrow</code> function but we can easily use <code>count</code> to make sure that our data set was split properly.</p>
+<p>Unlike <code>SparkR</code>, <code>sparklyr</code> offers a plethora of models or machine learning techniques to choose from including:</p>
+<ul>
+<li>ml_als_factorization<br />
+</li>
+<li>ml_binary_classification_eval<br />
+</li>
+<li>ml_classification_eval<br />
+</li>
+<li>ml_create_dummy_variables<br />
+</li>
+<li>ml_decision_tree<br />
+</li>
+<li>ml_generalized_linear_regression<br />
+</li>
+<li>ml_gradient_boosted_trees<br />
+</li>
+<li>ml_kmeans<br />
+</li>
+<li>ml_lda<br />
+</li>
+<li>ml_linear_regression<br />
+</li>
+<li>ml_load<br />
+</li>
+<li>ml_logistic_regression<br />
+</li>
+<li>ml_model<br />
+</li>
+<li>ml_multilayer_perceptron<br />
+</li>
+<li>ml_naive_bayes<br />
+</li>
+<li>ml_one_vs_rest<br />
+</li>
+<li>ml_options<br />
+</li>
+<li>ml_pca<br />
+</li>
+<li>ml_prepare_dataframe<br />
+</li>
+<li>ml_prepare_features<br />
+</li>
+<li>ml_prepare_response_features_intercept</li>
+<li>ml_random_forest<br />
+</li>
+<li>ml_save<br />
+</li>
+<li>ml_survival_regression<br />
+</li>
+<li>ml_tree_feature_importance</li>
+</ul>
+<p>Now that we have our training and test sets we are ready to run our regression model.</p>
+<pre class="r"><code>fit &lt;- ml_linear_regression(train, response = &quot;distance&quot;, features = &quot;air_time&quot;)</code></pre>
+<pre><code>## * Dropped 7516 rows with 'na.omit' (269145 =&gt; 261629)</code></pre>
+<pre class="r"><code>fit</code></pre>
+<pre><code>## Call: ml_linear_regression(train, response = &quot;distance&quot;, features = &quot;air_time&quot;)
+## 
+## Coefficients:
+## (Intercept)    air_time 
+##  -123.97955     7.77944</code></pre>
+<pre class="r"><code>#summary 
+summary(fit)</code></pre>
+<pre><code>## Call: ml_linear_regression(train, response = &quot;distance&quot;, features = &quot;air_time&quot;)
+## 
+## Deviance Residuals: (approximate):
+##      Min       1Q   Median       3Q      Max 
+## -1100.77   -51.99     4.89    53.58   691.60 
+## 
+## Coefficients:
+##                Estimate  Std. Error t value  Pr(&gt;|t|)    
+## (Intercept) -1.2398e+02  3.7156e-01 -333.67 &lt; 2.2e-16 ***
+## air_time     7.7794e+00  2.0937e-03 3715.64 &lt; 2.2e-16 ***
+## ---
+## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+## 
+## R-Squared: 0.9814
+## Root Mean Squared Error: 100.4</code></pre>
+<p><code>ml_linear_regression</code> seems to be a better alternative to <code>SparkR::glm</code> since it can handle NAs without having to run <code>na.omit</code> before training the model (SparkR does not return a meaningful error either in case you forget to remove NAs). It also provides an R squared and RMSE by default which we had to calculate on our own in the case of <code>SparkR::glm</code>.</p>
+<p>Of course, although <code>ml_linear_regression</code> provides an R squared and an RMSE we need to check those on the test set in order to assess the goodness of fit. We will do this in a similar way as we did in SparkR.</p>
+<p>We will use <code>na.omit</code> in this case because we know some distances have missing values and we want to make sure predictions are correct. Also, make sure to use <code>sdf_predict</code> instead of <code>predict</code> because the latter will also collect and return an atomic vector. <code>mutate</code> instead of <code>transform</code> is used in <code>sparklyr</code> to add a column.</p>
+<pre class="r"><code>#add squared residuals using transform
+test &lt;- na.omit(test)</code></pre>
+<pre><code>## * Dropped 1914 rows with 'na.omit' (67631 =&gt; 65717)</code></pre>
+<pre class="r"><code>#calculate predictions - sdf_predict will add predictions as a column
+preds &lt;- sdf_predict(fit, data = test)
+
+#add squared residuals in preds
+sq_resid &lt;- mutate(preds, sq_residuals = (distance - prediction)^2)
+
+#calculate MSE
+MSE &lt;- collect(summarise(sq_resid, mean = mean(sq_residuals)))$mean
+
+#RMSE
+sqrt(MSE) </code></pre>
+<pre><code>## [1] 100.3887</code></pre>
 </div>
 
 
